@@ -28,6 +28,41 @@ class Pdf_model extends CI_Model {
         return $query->row_array();
     }
 
+    public function obtener_por_id($id)
+    {
+        $this->db->where('id', $id);
+        $query = $this->db->get('pdfs');
+        
+        if ($query->num_rows() > 0) {
+            return $query->row_array();
+        }
+        
+        return false;
+    }
+
+    public function eliminar($id)
+    {
+        try {
+            $this->db->trans_start();
+            
+            // Eliminar el registro
+            $this->db->where('id', $id);
+            $this->db->delete('pdfs');
+            
+            $this->db->trans_complete();
+            
+            if ($this->db->trans_status() === FALSE) {
+                return false;
+            }
+            
+            return true;
+            
+        } catch (Exception $e) {
+            log_message('error', 'Error en modelo al eliminar PDF: ' . $e->getMessage());
+            return false;
+        }
+    }
+
     public function actualizar_estado($id, $estado)
     {
         $this->db->where('id', $id);
@@ -35,6 +70,11 @@ class Pdf_model extends CI_Model {
     }
 
     public function contar_pdfs()
+    {
+        return $this->db->count_all('pdfs');
+    }
+
+    public function contar_total()
     {
         return $this->db->count_all('pdfs');
     }

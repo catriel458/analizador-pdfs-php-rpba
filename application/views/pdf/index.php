@@ -38,6 +38,27 @@
             padding: 12px 30px;
             font-weight: 600;
         }
+
+        .btn-delete {
+            background: #dc3545;
+            border-color: #dc3545;
+            color: white;
+        }
+
+        .btn-delete:hover {
+            background: #c82333;
+            border-color: #bd2130;
+            color: white;
+        }
+
+        .row-fade-out {
+            animation: fadeOut 0.5s ease-out forwards;
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(-100%); }
+        }
     </style>
 </head>
 <body>
@@ -76,7 +97,7 @@
             <div class="col-md-8">
                 <div class="card text-center">
                     <div class="card-body">
-                        <h2 class="text-primary"><?= $total_pdfs ?></h2>
+                        <h2 class="text-primary" id="contador-pdfs"><?= $total_pdfs ?></h2>
                         <p class="text-muted">Documentos Procesados</p>
                     </div>
                 </div>
@@ -108,9 +129,9 @@
                                 <th>Acciones</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="tabla-pdfs">
                             <?php if (empty($pdfs)): ?>
-                                <tr>
+                                <tr id="fila-vacia">
                                     <td colspan="5" class="text-center py-5">
                                         <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
                                         <p class="text-muted">No hay documentos procesados aún.</p>
@@ -121,7 +142,7 @@
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($pdfs as $pdf): ?>
-                                    <tr>
+                                    <tr id="pdf-row-<?= $pdf['id'] ?>">
                                         <td>
                                             <i class="fas fa-file-pdf text-danger me-2"></i>
                                             <?= htmlspecialchars($pdf['nombre_archivo'], ENT_QUOTES, 'UTF-8') ?>
@@ -138,13 +159,21 @@
                                         <td>
                                             <div class="btn-group">
                                                 <a href="<?= base_url('pdf/ver/' . $pdf['id']) ?>" 
-                                                   class="btn btn-sm btn-outline-primary">
+                                                   class="btn btn-sm btn-outline-primary" 
+                                                   title="Ver documento">
                                                     <i class="fas fa-eye"></i>
                                                 </a>
                                                 <a href="<?= base_url('pdf/descargar/' . $pdf['id']) ?>" 
-                                                   class="btn btn-sm btn-outline-success">
+                                                   class="btn btn-sm btn-outline-success"
+                                                   title="Descargar">
                                                     <i class="fas fa-download"></i>
                                                 </a>
+                                                <button type="button" 
+                                                        class="btn btn-sm btn-delete" 
+                                                        onclick="confirmarEliminacion(<?= $pdf['id'] ?>, '<?= htmlspecialchars($pdf['nombre_archivo'], ENT_QUOTES, 'UTF-8') ?>')"
+                                                        title="Eliminar documento">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -157,6 +186,151 @@
         </div>
     </div>
 
+    <!-- Modal de confirmación -->
+    <div class="modal fade" id="modalConfirmacion" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                        Confirmar Eliminación
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Está seguro que desea eliminar el documento <strong id="nombreArchivo"></strong>?</p>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Esta acción no se puede deshacer. El archivo será eliminado permanentemente.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </button>
+                    <button type="button" class="btn btn-danger" id="btnEliminar">
+                        <i class="fas fa-trash me-2"></i>Eliminar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let pdfIdAEliminar = null;
+        const modal = new bootstrap.Modal(document.getElementById('modalConfirmacion'));
+
+        function confirmarEliminacion(id, nombreArchivo) {
+            pdfIdAEliminar = id;
+            document.getElementById('nombreArchivo').textContent = nombreArchivo;
+            modal.show();
+        }
+
+        document.getElementById('btnEliminar').addEventListener('click', function() {
+            if (pdfIdAEliminar) {
+                eliminarPdf(pdfIdAEliminar);
+            }
+        });
+
+        function eliminarPdf(id) {
+            const btn = document.getElementById('btnEliminar');
+            const textoOriginal = btn.innerHTML;
+            
+            // Mostrar loading
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Eliminando...';
+            btn.disabled = true;
+
+            // Hacer petición AJAX
+            fetch('<?= base_url() ?>index.php/pdf/eliminar/' + id, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Animar eliminación
+                    const fila = document.getElementById('pdf-row-' + id);
+                    fila.classList.add('row-fade-out');
+                    
+                    setTimeout(() => {
+                        fila.remove();
+                        actualizarContador();
+                        verificarTablaVacia();
+                        mostrarAlerta('success', data.message);
+                    }, 500);
+                } else {
+                    mostrarAlerta('danger', data.message || 'Error al eliminar el documento');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                mostrarAlerta('danger', 'Error de conexión. Inténtelo nuevamente.');
+            })
+            .finally(() => {
+                // Restaurar botón y cerrar modal
+                btn.innerHTML = textoOriginal;
+                btn.disabled = false;
+                modal.hide();
+                pdfIdAEliminar = null;
+            });
+        }
+
+        function actualizarContador() {
+            const filas = document.querySelectorAll('#tabla-pdfs tr:not(#fila-vacia)');
+            const contador = document.getElementById('contador-pdfs');
+            contador.textContent = filas.length;
+        }
+
+        function verificarTablaVacia() {
+            const filas = document.querySelectorAll('#tabla-pdfs tr:not(#fila-vacia)');
+            const tbody = document.getElementById('tabla-pdfs');
+            
+            if (filas.length === 0) {
+                tbody.innerHTML = `
+                    <tr id="fila-vacia">
+                        <td colspan="5" class="text-center py-5">
+                            <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">No hay documentos procesados aún.</p>
+                            <a href="<?= base_url('pdf/subir') ?>" class="btn btn-primary">
+                                Subir Primer PDF
+                            </a>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function mostrarAlerta(tipo, mensaje) {
+            // Remover alertas existentes
+            const alertaExistente = document.querySelector('.alert:not(.alert-dismissible)');
+            if (alertaExistente) {
+                alertaExistente.remove();
+            }
+
+            // Crear nueva alerta
+            const alerta = document.createElement('div');
+            alerta.className = `alert alert-${tipo} alert-dismissible fade show`;
+            alerta.innerHTML = `
+                <i class="fas fa-${tipo === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+                ${mensaje}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+
+            // Insertar después del título
+            const titulo = document.querySelector('.text-center.mb-4');
+            titulo.insertAdjacentElement('afterend', alerta);
+
+            // Auto-ocultar
+            setTimeout(() => {
+                if (alerta.parentNode) {
+                    alerta.remove();
+                }
+            }, 5000);
+        }
+    </script>
 </body>
 </html>

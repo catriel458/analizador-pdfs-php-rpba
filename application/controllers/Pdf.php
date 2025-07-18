@@ -8,6 +8,8 @@ class Pdf extends CI_Controller {
         parent::__construct();
         $this->load->model('Pdf_model');
         $this->load->library('SimplePdfExtractor');
+        $this->load->library('session');
+        $this->load->helper('url');
     }
 
     public function index()
@@ -23,23 +25,19 @@ class Pdf extends CI_Controller {
         $this->load->view('pdf/subir');
     }
 
-    // AQUÍ ES DONDE VA EL CÓDIGO QUE TE DI
     public function procesar()
     {
-        // MÉTODO 1: Usar ruta relativa simple
+        $this->load->library('upload');
+        
         $upload_path = './uploads/pdfs/';
         
-        // Crear directorios si no existen
         if (!is_dir($upload_path)) {
-            // Crear directorio uploads primero
             if (!is_dir('./uploads/')) {
                 mkdir('./uploads/', 0755, true);
             }
-            // Luego crear subdirectorio pdfs
             mkdir($upload_path, 0755, true);
         }
         
-        // Verificar que el directorio existe y es escribible
         if (!is_dir($upload_path)) {
             $this->session->set_flashdata('error', 'No se pudo crear el directorio: ' . $upload_path);
             redirect('pdf/subir');
@@ -47,7 +45,6 @@ class Pdf extends CI_Controller {
         }
         
         if (!is_writable($upload_path)) {
-            // Intentar dar permisos
             chmod($upload_path, 0755);
             if (!is_writable($upload_path)) {
                 $this->session->set_flashdata('error', 'El directorio no tiene permisos de escritura: ' . $upload_path);
@@ -56,47 +53,32 @@ class Pdf extends CI_Controller {
             }
         }
 
-        // Configuración de upload
         $config['upload_path'] = $upload_path;
         $config['allowed_types'] = 'pdf';
-        $config['max_size'] = 10240; // 10MB
+        $config['max_size'] = 10240;
         $config['encrypt_name'] = TRUE;
         $config['remove_spaces'] = TRUE;
         
-        // Limpiar cualquier configuración previa
         $this->upload->initialize($config);
 
         if (!$this->upload->do_upload('archivo_pdf')) {
             $error = $this->upload->display_errors('', '');
-            
-            // Debug adicional
-            $debug_info = array(
-                'upload_path' => $upload_path,
-                'path_exists' => is_dir($upload_path) ? 'YES' : 'NO',
-                'path_writable' => is_writable($upload_path) ? 'YES' : 'NO',
-                'real_path' => realpath($upload_path),
-                'error' => $error
-            );
-            
-            log_message('error', 'Upload Debug: ' . print_r($debug_info, true));
-            
             $this->session->set_flashdata('error', 'Error al subir archivo: ' . $error);
             redirect('pdf/subir');
         } else {
             $upload_data = $this->upload->data();
             
             try {
-                // Extraer texto del PDF
                 $ruta_completa = $upload_data['full_path'];
                 $contenido_texto = $this->simplepdfextractor->extract_text($ruta_completa);
                 
-                // Guardar en base de datos
                 $datos_pdf = array(
                     'nombre_archivo' => $upload_data['orig_name'],
                     'ruta_archivo' => $ruta_completa,
                     'contenido_texto' => $contenido_texto,
                     'tamaño_archivo' => $upload_data['file_size'] * 1024,
-                    'estado' => 'procesado'
+                    'estado' => 'procesado',
+                    'fecha_subida' => date('Y-m-d H:i:s')
                 );
                 
                 if ($this->Pdf_model->guardar_pdf($datos_pdf)) {
@@ -116,6 +98,68 @@ class Pdf extends CI_Controller {
         }
     }
 
+    public function eliminar($id = null)
+    {
+        // Solo permitir POST
+        if ($this->input->server('REQUEST_METHOD') !== 'POST') {
+            show_404();
+            return;
+        }
+
+        // Configurar respuesta JSON
+        $this->output->set_content_type('application/json');
+
+        try {
+            // Validar ID
+            if (!$id || !is_numeric($id)) {
+                $this->output->set_output(json_encode([
+                    'success' => false,
+                    'message' => 'ID de documento inválido'
+                ]));
+                return;
+            }
+
+            // Obtener PDF
+            $pdf = $this->Pdf_model->obtener_por_id($id);
+            
+            if (!$pdf) {
+                $this->output->set_output(json_encode([
+                    'success' => false,
+                    'message' => 'Documento no encontrado'
+                ]));
+                return;
+            }
+
+            // Eliminar archivo físico
+            if (isset($pdf['ruta_archivo']) && file_exists($pdf['ruta_archivo'])) {
+                unlink($pdf['ruta_archivo']);
+            }
+
+            // Eliminar de base de datos
+            $eliminado = $this->Pdf_model->eliminar($id);
+
+            if ($eliminado) {
+                $this->output->set_output(json_encode([
+                    'success' => true,
+                    'message' => 'Documento eliminado correctamente'
+                ]));
+            } else {
+                $this->output->set_output(json_encode([
+                    'success' => false,
+                    'message' => 'Error al eliminar el documento de la base de datos'
+                ]));
+            }
+
+        } catch (Exception $e) {
+            log_message('error', 'Error al eliminar PDF: ' . $e->getMessage());
+            
+            $this->output->set_output(json_encode([
+                'success' => false,
+                'message' => 'Error interno del servidor'
+            ]));
+        }
+    }
+
     public function ver($id)
     {
         $pdf = $this->Pdf_model->obtener_pdf_por_id($id);
@@ -124,7 +168,6 @@ class Pdf extends CI_Controller {
             show_404();
         }
 
-        // Extraer palabras únicas
         $palabras = $this->simplepdfextractor->extraer_palabras($pdf['contenido_texto']);
         
         $data = array(
@@ -136,15 +179,73 @@ class Pdf extends CI_Controller {
         $this->load->view('pdf/ver', $data);
     }
 
+    // Reemplaza el método descargar en tu controlador con este:
     public function descargar($id)
+    {
+        // Verificar que el ID es válido
+        if (!$id || !is_numeric($id)) {
+            show_404();
+            return;
+        }
+        
+        // Obtener información del PDF
+        $pdf = $this->Pdf_model->obtener_pdf_por_id($id);
+        
+        if (!$pdf) {
+            log_message('error', "PDF no encontrado en BD: ID $id");
+            show_404();
+            return;
+        }
+        
+        // Verificar que el archivo existe
+        $ruta_archivo = $pdf['ruta_archivo'];
+        
+        if (!file_exists($ruta_archivo)) {
+            log_message('error', "Archivo físico no encontrado: $ruta_archivo");
+            $this->session->set_flashdata('error', 'El archivo PDF no se encuentra en el servidor.');
+            redirect('pdf');
+            return;
+        }
+        
+        // Cargar helper de descarga
+        $this->load->helper('download');
+        
+        try {
+            // Obtener contenido del archivo
+            $contenido = file_get_contents($ruta_archivo);
+            
+            if ($contenido === false) {
+                throw new Exception("No se pudo leer el archivo");
+            }
+            
+            // Forzar descarga
+            force_download($pdf['nombre_archivo'], $contenido);
+            
+        } catch (Exception $e) {
+            log_message('error', "Error en descarga PDF ID $id: " . $e->getMessage());
+            $this->session->set_flashdata('error', 'Error al descargar el archivo: ' . $e->getMessage());
+            redirect('pdf');
+        }
+    }
+
+    // Método adicional para descarga directa (debug)
+    public function descargar_directo($id)
     {
         $pdf = $this->Pdf_model->obtener_pdf_por_id($id);
         
         if (!$pdf || !file_exists($pdf['ruta_archivo'])) {
             show_404();
+            return;
         }
-
-        $this->load->helper('download');
-        force_download($pdf['nombre_archivo'], file_get_contents($pdf['ruta_archivo']));
+        
+        // Headers para forzar descarga
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $pdf['nombre_archivo'] . '"');
+        header('Content-Length: ' . filesize($pdf['ruta_archivo']));
+        header('Cache-Control: no-cache, must-revalidate');
+        
+        // Enviar archivo
+        readfile($pdf['ruta_archivo']);
+        exit;
     }
 }
