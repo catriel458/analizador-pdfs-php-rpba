@@ -134,7 +134,7 @@
         <?php endif; ?>
 
         <!-- Botones de acción principales -->
-        <div class="row action-buttons">
+        <div class="row action-buttons justify-content-center">
             <div class="col-lg-3 col-md-6 mb-3">
                 <div class="card feature-card text-center h-100">
                     <div class="card-body">
@@ -148,19 +148,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-lg-3 col-md-6 mb-3">
-                <div class="card feature-card text-center h-100">
-                    <div class="card-body">
-                        <i class="fas fa-cloud-upload-alt feature-icon text-success"></i>
-                        <h5 class="card-title">Subir Documento</h5>
-                        <p class="card-text text-muted">Agregue nuevos documentos PDF al sistema</p>
-                        <a href="<?= base_url('pdf/subir') ?>" class="btn btn-success w-100">
-                            <i class="fas fa-cloud-upload-alt me-2"></i>
-                            Subir PDF
-                        </a>
-                    </div>
-                </div>
-            </div>
+       
             <div class="col-lg-3 col-md-6 mb-3">
                 <div class="card feature-card text-center h-100">
                     <div class="card-body">
@@ -180,107 +168,15 @@
                         <h2 class="text-primary feature-icon" id="contador-pdfs"><?= $total_pdfs ?></h2>
                         <h5 class="card-title">Documentos</h5>
                         <p class="card-text text-muted">Total de documentos procesados</p>
-                        <div class="btn btn-outline-primary w-100 disabled">
+                        <a href="<?= base_url('pdf/historial_validaciones') ?>" class="btn btn-outline-primary w-100">
                             <i class="fas fa-file-pdf me-2"></i>
-                            Procesados
-                        </div>
+                            Ver Procesados
+                        </a>
                     </div>
                 </div>
             </div>
         </div>
 
-<!-- Tabla de documentos -->
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">
-                    <i class="fas fa-list me-2"></i>
-                    Lista de Documentos Recientes
-                </h5>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Documento</th>
-                                <th>Código</th>
-                                <th>Fecha</th>
-                                <th>Tamaño</th>
-                                <th>Estado</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabla-pdfs">
-                            <?php if (empty($pdfs)): ?>
-                                <tr id="fila-vacia">
-                                    <td colspan="6" class="text-center py-5">
-                                        <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
-                                        <p class="text-muted">No hay documentos procesados aún.</p>
-                                        <div class="d-flex justify-content-center gap-2">
-                                            <a href="<?= base_url('pdf/subir') ?>" class="btn btn-primary">
-                                                <i class="fas fa-upload me-2"></i>
-                                                Subir Primer PDF
-                                            </a>
-                                            <a href="<?= base_url('pdf/buscar') ?>" class="btn btn-success">
-                                                <i class="fas fa-search me-2"></i>
-                                                Buscar Documento
-                                            </a>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php else: ?>
-                                <?php foreach ($pdfs as $pdf): ?>
-                                    <tr id="pdf-row-<?= $pdf['id'] ?>">
-                                        <td>
-                                            <i class="fas fa-file-pdf text-danger me-2"></i>
-                                            <?= htmlspecialchars($pdf['nombre_archivo'], ENT_QUOTES, 'UTF-8') ?>
-                                        </td>
-                                        <td>
-                                            <?php if (!empty($pdf['numero_completo'])): ?>
-                                                <span class="badge bg-info font-monospace">
-                                                    <?= htmlspecialchars($pdf['numero_completo'], ENT_QUOTES, 'UTF-8') ?>
-                                                </span>
-                                            <?php else: ?>
-                                                <span class="text-muted">-</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td><?= date('d/m/Y H:i', strtotime($pdf['fecha_subida'])) ?></td>
-                                        <td>
-                                            <span class="badge bg-secondary">
-                                                <?= number_format($pdf['tamaño_archivo'] / 1024, 2) ?> KB
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-success"><?= ucfirst($pdf['estado']) ?></span>
-                                        </td>
-                                        <td>
-                                            <div class="btn-group">
-                                                <a href="<?= base_url('pdf/ver/' . $pdf['id']) ?>" 
-                                                   class="btn btn-sm btn-outline-primary" 
-                                                   title="Ver documento">
-                                                    <i class="fas fa-eye"></i>
-                                                </a>
-                                                <a href="<?= base_url('pdf/descargar/' . $pdf['id']) ?>" 
-                                                   class="btn btn-sm btn-outline-success"
-                                                   title="Descargar">
-                                                    <i class="fas fa-download"></i>
-                                                </a>
-                                                <button type="button" 
-                                                        class="btn btn-sm btn-delete" 
-                                                        onclick="confirmarEliminacion(<?= $pdf['id'] ?>, '<?= htmlspecialchars($pdf['nombre_archivo'], ENT_QUOTES, 'UTF-8') ?>')"
-                                                        title="Eliminar documento">
-                                                    <i class="fas fa-times"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
 
         <!-- Modal de estadísticas -->
         <div class="modal fade" id="modalEstadisticas" tabindex="-1">

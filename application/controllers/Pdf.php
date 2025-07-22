@@ -28,6 +28,7 @@ class Pdf extends CI_Controller {
 
     // NUEVA FUNCIÓN: Procesar búsqueda por códigos
     // NUEVA FUNCIÓN: Procesar búsqueda por códigos
+   // FUNCIÓN MODIFICADA: Procesar búsqueda por códigos
     public function procesar_busqueda()
     {
         $this->output->set_content_type('application/json');
@@ -51,22 +52,40 @@ class Pdf extends CI_Controller {
             // Construir número concatenado
             $numero_completo = $codigo_entrada . $numero_entrada . $digito_verificador . $ano;
 
-            // RUTA MODIFICADA: Definir path de búsqueda en el escritorio
+            // Definir path de búsqueda
             $path_busqueda = 'C:/Users/lp2165/Desktop/pdfbuscar/';
             $nombre_archivo = $numero_completo . '.pdf';
             $ruta_completa = $path_busqueda . $nombre_archivo;
 
             // Verificar si el archivo existe
             if (file_exists($ruta_completa)) {
-                // Archivo encontrado
-                $this->output->set_output(json_encode([
-                    'success' => true,
-                    'found' => true,
-                    'message' => 'Documento encontrado',
-                    'numero_completo' => $numero_completo,
-                    'archivo' => $nombre_archivo,
-                    'ruta' => $ruta_completa
-                ]));
+                // Archivo encontrado - Extraer texto del PDF
+                try {
+                    $contenido_texto = $this->simplepdfextractor->extract_text($ruta_completa);
+                    
+                    $this->output->set_output(json_encode([
+                        'success' => true,
+                        'found' => true,
+                        'message' => 'Documento encontrado. Ingrese datos para validar.',
+                        'numero_completo' => $numero_completo,
+                        'archivo' => $nombre_archivo,
+                        'ruta' => $ruta_completa,
+                        'codigo_entrada' => $codigo_entrada,
+                        'contenido_texto' => $contenido_texto
+                    ]));
+                } catch (Exception $e) {
+                    log_message('error', 'Error extrayendo texto del PDF: ' . $e->getMessage());
+                    $this->output->set_output(json_encode([
+                        'success' => true,
+                        'found' => true,
+                        'message' => 'Documento encontrado pero no se pudo extraer el texto.',
+                        'numero_completo' => $numero_completo,
+                        'archivo' => $nombre_archivo,
+                        'ruta' => $ruta_completa,
+                        'codigo_entrada' => $codigo_entrada,
+                        'contenido_texto' => ''
+                    ]));
+                }
             } else {
                 // Archivo no encontrado, solicitar búsqueda alternativa
                 $this->output->set_output(json_encode([
@@ -82,6 +101,298 @@ class Pdf extends CI_Controller {
             $this->output->set_output(json_encode([
                 'success' => false,
                 'message' => 'Error interno del servidor'
+            ]));
+        }
+    }
+
+    // NUEVA FUNCIÓN: Validar datos contra el contenido del PDF
+    // FUNCIÓN CORREGIDA: Validar datos contra el contenido del PDF
+    // NUEVA FUNCIÓN: Normalizar texto para mejorar coincidencias
+    private function normalizar_texto($texto)
+    {
+        // Convertir a minúsculas
+        $texto = strtolower($texto);
+        
+        // Remover acentos y caracteres especiales
+        $caracteresEspeciales = [
+            'á' => 'a', 'à' => 'a', 'ä' => 'a', 'â' => 'a', 'ā' => 'a', 'ã' => 'a',
+            'é' => 'e', 'è' => 'e', 'ë' => 'e', 'ê' => 'e', 'ē' => 'e',
+            'í' => 'i', 'ì' => 'i', 'ï' => 'i', 'î' => 'i', 'ī' => 'i',
+            'ó' => 'o', 'ò' => 'o', 'ö' => 'o', 'ô' => 'o', 'ō' => 'o', 'õ' => 'o',
+            'ú' => 'u', 'ù' => 'u', 'ü' => 'u', 'û' => 'u', 'ū' => 'u',
+            'ñ' => 'n',
+            'ç' => 'c',
+            'ý' => 'y', 'ÿ' => 'y'
+        ];
+        
+        $texto = str_replace(array_keys($caracteresEspeciales), array_values($caracteresEspeciales), $texto);
+        
+        // Remover espacios múltiples
+        $texto = preg_replace('/\s+/', ' ', $texto);
+        
+        // Remover caracteres especiales excepto letras, números y espacios
+        $texto = preg_replace('/[^a-z0-9\s]/', '', $texto);
+        
+        return trim($texto);
+    }
+
+    // NUEVA FUNCIÓN: Buscar texto con diferentes estrategias
+    private function buscar_texto_flexible($buscar, $contenido)
+    {
+        // Estrategia 1: Búsqueda exacta
+        if (strpos($contenido, $buscar) !== false) {
+            return ['encontrado' => true, 'metodo' => 'exacta'];
+        }
+        
+        // Estrategia 2: Búsqueda normalizada
+        $buscar_norm = $this->normalizar_texto($buscar);
+        $contenido_norm = $this->normalizar_texto($contenido);
+        
+        if (strpos($contenido_norm, $buscar_norm) !== false) {
+            return ['encontrado' => true, 'metodo' => 'normalizada'];
+        }
+        
+        // Estrategia 3: Búsqueda por palabras individuales
+        $palabras = explode(' ', $buscar_norm);
+        $palabras_encontradas = 0;
+        
+        foreach ($palabras as $palabra) {
+            if (strlen($palabra) > 2 && strpos($contenido_norm, $palabra) !== false) {
+                $palabras_encontradas++;
+            }
+        }
+        
+        // Si encuentra al menos 70% de las palabras
+        $porcentaje = count($palabras) > 0 ? ($palabras_encontradas / count($palabras)) : 0;
+        if ($porcentaje >= 0.7) {
+            return ['encontrado' => true, 'metodo' => 'parcial', 'porcentaje' => $porcentaje];
+        }
+        
+        // Estrategia 4: Búsqueda con similitud (usando similar_text)
+        $similitud = 0;
+        similar_text($buscar_norm, $contenido_norm, $similitud);
+        
+        if ($similitud > 60) { // 60% de similitud
+            return ['encontrado' => true, 'metodo' => 'similitud', 'porcentaje' => $similitud];
+        }
+        
+        return ['encontrado' => false, 'metodo' => 'ninguna'];
+    }
+
+    // FUNCIÓN ACTUALIZADA: Validar datos contra el contenido del PDF
+    public function validar_pdf()
+    {
+        $this->output->set_content_type('application/json');
+
+        try {
+            // Obtener datos del formulario
+            $numero_completo = $this->input->post('numero_completo');
+            $nombre = $this->input->post('nombre');
+            $apellido = $this->input->post('apellido');
+            $dni = $this->input->post('dni');
+            $cuit = $this->input->post('cuit');
+            $razon_social_parte1 = $this->input->post('razon_social_parte1');
+            $razon_social_parte2 = $this->input->post('razon_social_parte2');
+            $contenido_texto = $this->input->post('contenido_texto');
+            $codigo_entrada = $this->input->post('codigo_entrada');
+
+            log_message('debug', 'Validando PDF: ' . $numero_completo);
+
+            if (empty($numero_completo)) {
+                $this->output->set_output(json_encode([
+                    'success' => false,
+                    'message' => 'Número completo es requerido'
+                ]));
+                return;
+            }
+
+            // Si no hay contenido del texto, intentar extraerlo nuevamente
+            if (empty($contenido_texto)) {
+                $path_busqueda = 'C:/Users/lp2165/Desktop/pdfbuscar/';
+                $nombre_archivo = $numero_completo . '.pdf';
+                $ruta_completa = $path_busqueda . $nombre_archivo;
+                
+                if (file_exists($ruta_completa)) {
+                    try {
+                        $contenido_texto = $this->simplepdfextractor->extract_text($ruta_completa);
+                        log_message('debug', 'Texto extraído nuevamente');
+                    } catch (Exception $e) {
+                        log_message('error', 'Error extrayendo texto: ' . $e->getMessage());
+                        $contenido_texto = '';
+                    }
+                }
+            }
+
+            if (empty($contenido_texto)) {
+                $this->output->set_output(json_encode([
+                    'success' => true,
+                    'estado' => 'erroneo',
+                    'errores' => ['contenido_vacio'],
+                    'validaciones_exitosas' => [],
+                    'observaciones' => 'No se pudo extraer contenido del PDF',
+                    'message' => 'No se pudo analizar el contenido del PDF'
+                ]));
+                return;
+            }
+
+            $errores = [];
+            $validaciones_exitosas = [];
+
+            // Determinar tipo de validación según CODIGO_MOVIMI
+            if ($codigo_entrada == '01' || $codigo_entrada == '98') {
+                
+                // Validar apellido con búsqueda flexible
+                if (!empty($apellido)) {
+                    $resultado = $this->buscar_texto_flexible($apellido, $contenido_texto);
+                    
+                    if ($resultado['encontrado']) {
+                        $metodo = $resultado['metodo'];
+                        $porcentaje = isset($resultado['porcentaje']) ? ' (' . round($resultado['porcentaje'], 1) . '%)' : '';
+                        $validaciones_exitosas[] = "Apellido '{$apellido}' encontrado (método: {$metodo}{$porcentaje})";
+                        log_message('debug', "Apellido encontrado por método: {$metodo}");
+                    } else {
+                        $errores[] = "apellido no coincidente";
+                        log_message('debug', 'Apellido NO encontrado con ningún método');
+                        
+                        // Log adicional para debug
+                        log_message('debug', 'Apellido buscado: ' . $apellido);
+                        log_message('debug', 'Apellido normalizado: ' . $this->normalizar_texto($apellido));
+                        log_message('debug', 'Primeras 200 chars del contenido: ' . substr($contenido_texto, 0, 200));
+                    }
+                }
+
+                // Validar nombre con búsqueda flexible
+                if (!empty($nombre)) {
+                    $resultado = $this->buscar_texto_flexible($nombre, $contenido_texto);
+                    
+                    if ($resultado['encontrado']) {
+                        $metodo = $resultado['metodo'];
+                        $porcentaje = isset($resultado['porcentaje']) ? ' (' . round($resultado['porcentaje'], 1) . '%)' : '';
+                        $validaciones_exitosas[] = "Nombre '{$nombre}' encontrado (método: {$metodo}{$porcentaje})";
+                        log_message('debug', "Nombre encontrado por método: {$metodo}");
+                    } else {
+                        $errores[] = "nombre no coincidente";
+                        log_message('debug', 'Nombre NO encontrado con ningún método');
+                    }
+                }
+
+                // Validar DNI (este se mantiene igual porque son solo números)
+                if (!empty($dni)) {
+                    $dni_clean = preg_replace('/[^0-9]/', '', $dni);
+                    
+                    if (strpos($contenido_texto, $dni_clean) !== false) {
+                        $validaciones_exitosas[] = "DNI '{$dni}' encontrado en el documento";
+                        log_message('debug', 'DNI encontrado');
+                    } else {
+                        $errores[] = "documento no coincidente";
+                        log_message('debug', 'DNI NO encontrado');
+                    }
+                }
+
+                // Validar CUIT
+                if (!empty($cuit)) {
+                    $cuit_clean = preg_replace('/[^0-9]/', '', $cuit);
+                    
+                    if (strpos($contenido_texto, $cuit_clean) !== false) {
+                        $validaciones_exitosas[] = "CUIT '{$cuit}' encontrado en el documento";
+                        log_message('debug', 'CUIT encontrado');
+                    } else {
+                        $errores[] = "cuit no coincidente";
+                        log_message('debug', 'CUIT NO encontrado');
+                    }
+                }
+
+            } elseif ($codigo_entrada == '02') {
+                
+                // Validar razón social con búsqueda flexible
+                if (!empty($razon_social_parte1) || !empty($razon_social_parte2)) {
+                    $razon_social_completa = trim($razon_social_parte1 . ' ' . $razon_social_parte2);
+                    $resultado = $this->buscar_texto_flexible($razon_social_completa, $contenido_texto);
+                    
+                    if ($resultado['encontrado']) {
+                        $metodo = $resultado['metodo'];
+                        $porcentaje = isset($resultado['porcentaje']) ? ' (' . round($resultado['porcentaje'], 1) . '%)' : '';
+                        $validaciones_exitosas[] = "Razón social '{$razon_social_completa}' encontrada (método: {$metodo}{$porcentaje})";
+                        log_message('debug', "Razón social encontrada por método: {$metodo}");
+                    } else {
+                        $errores[] = "razón social no coincidente";
+                        log_message('debug', 'Razón social NO encontrada');
+                    }
+                }
+
+                // Validar CUIT
+                if (!empty($cuit)) {
+                    $cuit_clean = preg_replace('/[^0-9]/', '', $cuit);
+                    
+                    if (strpos($contenido_texto, $cuit_clean) !== false) {
+                        $validaciones_exitosas[] = "CUIT '{$cuit}' encontrado en el documento";
+                        log_message('debug', 'CUIT encontrado');
+                    } else {
+                        $errores[] = "cuit no coincidente";
+                        log_message('debug', 'CUIT NO encontrado');
+                    }
+                }
+            }
+
+            // Verificar que se haya ingresado al menos un dato
+            $datos_ingresados = 0;
+            if (!empty($nombre)) $datos_ingresados++;
+            if (!empty($apellido)) $datos_ingresados++;
+            if (!empty($dni)) $datos_ingresados++;
+            if (!empty($cuit)) $datos_ingresados++;
+            if (!empty($razon_social_parte1)) $datos_ingresados++;
+            if (!empty($razon_social_parte2)) $datos_ingresados++;
+
+            if ($datos_ingresados == 0) {
+                $this->output->set_output(json_encode([
+                    'success' => false,
+                    'message' => 'Debe ingresar al menos un dato para validar'
+                ]));
+                return;
+            }
+
+            // Determinar resultado final
+            $estado = empty($errores) ? 'validado' : 'erroneo';
+            $observaciones = empty($errores) ? 'Validación exitosa' : implode(', ', $errores);
+
+            log_message('debug', 'Resultado final: ' . $estado);
+
+            // Guardar resultado en base de datos
+            $datos_validacion = array(
+                'numero_completo' => $numero_completo,
+                'estado_validacion' => $estado,
+                'observaciones' => $observaciones,
+                'fecha_validacion' => date('Y-m-d H:i:s'),
+                'codigo_movimi' => $codigo_entrada,
+                'datos_buscados' => json_encode([
+                    'nombre' => $nombre,
+                    'apellido' => $apellido,
+                    'dni' => $dni,
+                    'cuit' => $cuit,
+                    'razon_social_parte1' => $razon_social_parte1,
+                    'razon_social_parte2' => $razon_social_parte2
+                ]),
+                'errores_encontrados' => json_encode($errores),
+                'validaciones_exitosas' => json_encode($validaciones_exitosas),
+                'contenido_pdf' => $contenido_texto
+            );
+
+            $this->Pdf_model->guardar_validacion($datos_validacion);
+
+            $this->output->set_output(json_encode([
+                'success' => true,
+                'estado' => $estado,
+                'errores' => $errores,
+                'validaciones_exitosas' => $validaciones_exitosas,
+                'observaciones' => $observaciones,
+                'message' => $estado == 'validado' ? 'Validación completada exitosamente' : 'Validación completada con errores'
+            ]));
+
+        } catch (Exception $e) {
+            log_message('error', 'Error en validación de PDF: ' . $e->getMessage());
+            $this->output->set_output(json_encode([
+                'success' => false,
+                'message' => 'Error interno del servidor: ' . $e->getMessage()
             ]));
         }
     }
@@ -455,5 +766,140 @@ class Pdf extends CI_Controller {
         
         readfile($pdf['ruta_archivo']);
         exit;
+    }
+
+    // NUEVA FUNCIÓN: Ver historial de validaciones
+    // FUNCIÓN CORREGIDA: Ver historial de validaciones
+    public function historial_validaciones()
+    {
+        try {
+            $data['validaciones'] = $this->Pdf_model->obtener_validaciones(100);
+            
+            // Usar función simplificada para evitar problemas con PostgreSQL
+            $data['estadisticas'] = $this->Pdf_model->obtener_estadisticas_simples();
+            
+            $this->load->view('pdf/historial_validaciones', $data);
+            
+        } catch (Exception $e) {
+            log_message('error', 'Error en historial_validaciones: ' . $e->getMessage());
+            
+            // Si hay error, mostrar página con datos vacíos
+            $data['validaciones'] = [];
+            $data['estadisticas'] = [
+                'total_validaciones' => 0,
+                'validaciones_exitosas' => 0,
+                'validaciones_erroneas' => 0,
+                'porcentaje_exito' => 0
+            ];
+            
+            $this->load->view('pdf/historial_validaciones', $data);
+        }
+    }
+
+    // NUEVA FUNCIÓN: API para obtener estadísticas de validaciones
+    // FUNCIÓN CORREGIDA: API para obtener estadísticas de validaciones
+public function api_estadisticas_validaciones()
+{
+    $this->output->set_content_type('application/json');
+    
+    try {
+        $fecha_inicio = $this->input->get('fecha_inicio') ?: date('Y-m-d', strtotime('-30 days'));
+        $fecha_fin = $this->input->get('fecha_fin') ?: date('Y-m-d');
+        
+        $estadisticas = $this->Pdf_model->obtener_validaciones_por_fecha($fecha_inicio . ' 00:00:00', $fecha_fin . ' 23:59:59');
+        
+        // Procesar estadísticas manualmente
+        $resumen = [
+            'total_validaciones' => count($estadisticas),
+            'validaciones_exitosas' => 0,
+            'validaciones_erroneas' => 0,
+            'personas_fisicas' => 0,
+            'personas_juridicas' => 0
+        ];
+        
+        foreach ($estadisticas as $validacion) {
+            if ($validacion['estado_validacion'] == 'validado') {
+                $resumen['validaciones_exitosas']++;
+            } elseif ($validacion['estado_validacion'] == 'erroneo') {
+                $resumen['validaciones_erroneas']++;
+            }
+            
+            if ($validacion['codigo_movimi'] == '01' || $validacion['codigo_movimi'] == '98') {
+                $resumen['personas_fisicas']++;
+            } elseif ($validacion['codigo_movimi'] == '02') {
+                $resumen['personas_juridicas']++;
+            }
+        }
+        
+        $resumen['porcentaje_exito'] = $resumen['total_validaciones'] > 0 
+            ? round(($resumen['validaciones_exitosas'] / $resumen['total_validaciones']) * 100, 2) 
+            : 0;
+        
+        $this->output->set_output(json_encode([
+            'success' => true,
+            'resumen' => $resumen,
+            'validaciones' => $estadisticas
+        ]));
+        
+    } catch (Exception $e) {
+        log_message('error', 'Error obteniendo estadísticas: ' . $e->getMessage());
+        $this->output->set_output(json_encode([
+            'success' => false,
+            'message' => 'Error interno del servidor'
+        ]));
+    }
+}
+
+    // NUEVA FUNCIÓN: Revalidar un documento
+    public function revalidar_documento($numero_completo)
+    {
+        $this->output->set_content_type('application/json');
+        
+        try {
+            // Buscar validación anterior
+            $validacion_anterior = $this->Pdf_model->buscar_validacion_por_numero($numero_completo);
+            
+            if (!$validacion_anterior) {
+                $this->output->set_output(json_encode([
+                    'success' => false,
+                    'message' => 'No se encontró validación anterior para este documento'
+                ]));
+                return;
+            }
+            
+            // Obtener ruta del archivo
+            $path_busqueda = 'C:/Users/lp2165/Desktop/pdfbuscar/';
+            $nombre_archivo = $numero_completo . '.pdf';
+            $ruta_completa = $path_busqueda . $nombre_archivo;
+            
+            if (!file_exists($ruta_completa)) {
+                $this->output->set_output(json_encode([
+                    'success' => false,
+                    'message' => 'El archivo PDF ya no existe'
+                ]));
+                return;
+            }
+            
+            // Extraer texto nuevamente
+            $contenido_texto = $this->simplepdfextractor->extract_text($ruta_completa);
+            
+            // Obtener datos anteriores para revalidar
+            $datos_anteriores = json_decode($validacion_anterior['datos_buscados'], true);
+            
+            $this->output->set_output(json_encode([
+                'success' => true,
+                'validacion_anterior' => $validacion_anterior,
+                'datos_anteriores' => $datos_anteriores,
+                'contenido_texto' => $contenido_texto,
+                'message' => 'Listo para revalidar documento'
+            ]));
+            
+        } catch (Exception $e) {
+            log_message('error', 'Error en revalidación: ' . $e->getMessage());
+            $this->output->set_output(json_encode([
+                'success' => false,
+                'message' => 'Error interno del servidor'
+            ]));
+        }
     }
 }

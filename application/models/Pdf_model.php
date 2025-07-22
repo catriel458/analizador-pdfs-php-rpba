@@ -323,15 +323,39 @@ class Pdf_model extends CI_Model {
     /**
      * Buscar documentos por año
      */
-    public function buscar_por_ano($ano)
+     public function buscar_por_ano($ano)
     {
         $this->db->select('*');
-        $this->db->from('pdfs');
-        $this->db->where('RIGHT(numero_completo, 4)', $ano);
-        $this->db->order_by('fecha_subida', 'DESC');
+        $this->db->from('validaciones_pdfs');
+        $this->db->where("RIGHT(numero_completo, 4)", $ano);
+        $this->db->order_by('fecha_validacion', 'DESC');
         
         $query = $this->db->get();
         return $query->result_array();
+    }
+
+     public function obtener_estadisticas_simples()
+    {
+        // Consulta simple sin GROUP BY para evitar problemas
+        $this->db->select("
+            COUNT(*) as total_validaciones,
+            SUM(CASE WHEN estado_validacion = 'validado' THEN 1 ELSE 0 END) as validaciones_exitosas,
+            SUM(CASE WHEN estado_validacion = 'erroneo' THEN 1 ELSE 0 END) as validaciones_erroneas,
+            SUM(CASE WHEN estado_validacion = 'pendiente' THEN 1 ELSE 0 END) as validaciones_pendientes
+        ");
+        $this->db->from('validaciones_pdfs');
+        
+        $query = $this->db->get();
+        $resultado = $query->row_array();
+        
+        // Calcular porcentaje de éxito
+        if ($resultado['total_validaciones'] > 0) {
+            $resultado['porcentaje_exito'] = round(($resultado['validaciones_exitosas'] / $resultado['total_validaciones']) * 100, 2);
+        } else {
+            $resultado['porcentaje_exito'] = 0;
+        }
+        
+        return $resultado;
     }
 
     /**
@@ -343,6 +367,107 @@ class Pdf_model extends CI_Model {
         $this->db->from('pdfs');
         $this->db->order_by('fecha_subida', 'DESC');
         $this->db->limit($limit);
+        
+        $query = $this->db->get();
+        return $query->result_array();
+    }
+
+   
+    // NUEVA FUNCIÓN: Guardar resultado de validación
+    public function guardar_validacion($datos_validacion)
+    {
+        try {
+            $this->db->trans_start();
+            
+            // Insertar en tabla de validaciones
+            $this->db->insert('validaciones_pdfs', $datos_validacion);
+            
+            $this->db->trans_complete();
+            
+            if ($this->db->trans_status() === FALSE) {
+                return false;
+            }
+            
+            return true;
+            
+        } catch (Exception $e) {
+            log_message('error', 'Error al guardar validación: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    // NUEVA FUNCIÓN: Obtener historial de validaciones
+    public function obtener_validaciones($limite = 50)
+    {
+        $this->db->select('*');
+        $this->db->from('validaciones_pdfs');
+        $this->db->order_by('fecha_validacion', 'DESC');
+        $this->db->limit($limite);
+        
+        $query = $this->db->get();
+        return $query->result_array();
+    }
+
+    // NUEVA FUNCIÓN: Buscar validación por número completo
+    public function buscar_validacion_por_numero($numero_completo)
+    {
+        $this->db->where('numero_completo', $numero_completo);
+        $query = $this->db->get('validaciones_pdfs');
+        
+        if ($query->num_rows() > 0) {
+            return $query->row_array();
+        }
+        
+        return false;
+    }
+
+    // NUEVA FUNCIÓN: Obtener estadísticas de validaciones
+    public function obtener_estadisticas_validaciones()
+    {
+        $this->db->select("
+            COUNT(*) as total_validaciones,
+            SUM(CASE WHEN estado_validacion = 'validado' THEN 1 ELSE 0 END) as validaciones_exitosas,
+            SUM(CASE WHEN estado_validacion = 'erroneo' THEN 1 ELSE 0 END) as validaciones_erroneas,
+            DATE(fecha_validacion) as fecha
+        ");
+        $this->db->from('validaciones_pdfs');
+        $this->db->group_by('DATE(fecha_validacion)');
+        $this->db->order_by('fecha', 'DESC');
+        $this->db->limit(30); // Últimos 30 días
+        
+        $query = $this->db->get();
+        return $query->result_array();
+    }
+
+    // NUEVA FUNCIÓN: Actualizar estado de validación
+    public function actualizar_validacion($id, $nuevos_datos)
+    {
+        $this->db->where('id', $id);
+        return $this->db->update('validaciones_pdfs', $nuevos_datos);
+    }
+
+    // NUEVA FUNCIÓN: Obtener validaciones por estado
+
+    public function obtener_validaciones_por_estado($estado, $limite = 20)
+    {
+        $this->db->select('*');
+        $this->db->from('validaciones_pdfs');
+        $this->db->where('estado_validacion', $estado);
+        $this->db->order_by('fecha_validacion', 'DESC');
+        $this->db->limit($limite);
+        
+        $query = $this->db->get();
+        return $query->result_array();
+    }
+
+    // NUEVA FUNCIÓN: Buscar validaciones por rango de fechas
+        public function obtener_validaciones_por_fecha($fecha_inicio, $fecha_fin)
+    {
+        $this->db->select('*');
+        $this->db->from('validaciones_pdfs');
+        $this->db->where('fecha_validacion >=', $fecha_inicio);
+        $this->db->where('fecha_validacion <=', $fecha_fin);
+        $this->db->order_by('fecha_validacion', 'DESC');
         
         $query = $this->db->get();
         return $query->result_array();
