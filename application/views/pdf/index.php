@@ -39,6 +39,22 @@
             font-weight: 600;
         }
 
+        .btn-success {
+            background: #28a745;
+            border-color: #28a745;
+            border-radius: 25px;
+            padding: 12px 30px;
+            font-weight: 600;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            border-color: #17a2b8;
+            border-radius: 25px;
+            padding: 12px 30px;
+            font-weight: 600;
+        }
+
         .btn-delete {
             background: #dc3545;
             border-color: #dc3545;
@@ -59,6 +75,24 @@
             from { opacity: 1; transform: translateX(0); }
             to { opacity: 0; transform: translateX(-100%); }
         }
+
+        .action-buttons {
+            margin-bottom: 2rem;
+        }
+
+        .feature-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 35px rgba(0,0,0,0.15);
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -68,6 +102,12 @@
                 <i class="fas fa-file-pdf me-2"></i>
                 Análisis de PDFs - Registro de la Propiedad
             </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="<?= base_url('pdf/buscar') ?>">
+                    <i class="fas fa-search me-1"></i>
+                    Buscar por Códigos
+                </a>
+            </div>
         </div>
     </nav>
 
@@ -93,28 +133,68 @@
             </div>
         <?php endif; ?>
 
-        <div class="row mb-4">
-            <div class="col-md-8">
-                <div class="card text-center">
+        <!-- Botones de acción principales -->
+        <div class="row action-buttons">
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card feature-card text-center h-100">
                     <div class="card-body">
-                        <h2 class="text-primary" id="contador-pdfs"><?= $total_pdfs ?></h2>
-                        <p class="text-muted">Documentos Procesados</p>
+                        <i class="fas fa-search feature-icon text-primary"></i>
+                        <h5 class="card-title">Buscar por Códigos</h5>
+                        <p class="card-text text-muted">Busque documentos usando códigos registrales</p>
+                        <a href="<?= base_url('pdf/buscar') ?>" class="btn btn-primary w-100">
+                            <i class="fas fa-search me-2"></i>
+                            Buscar Documento
+                        </a>
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <a href="<?= base_url('pdf/subir') ?>" class="btn btn-primary btn-lg w-100">
-                    <i class="fas fa-cloud-upload-alt me-2"></i>
-                    Subir Nuevo PDF
-                </a>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card feature-card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-cloud-upload-alt feature-icon text-success"></i>
+                        <h5 class="card-title">Subir Documento</h5>
+                        <p class="card-text text-muted">Agregue nuevos documentos PDF al sistema</p>
+                        <a href="<?= base_url('pdf/subir') ?>" class="btn btn-success w-100">
+                            <i class="fas fa-cloud-upload-alt me-2"></i>
+                            Subir PDF
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card feature-card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-chart-bar feature-icon text-info"></i>
+                        <h5 class="card-title">Estadísticas</h5>
+                        <p class="card-text text-muted">Vea estadísticas y reportes del sistema</p>
+                        <button class="btn btn-info w-100" onclick="mostrarEstadisticas()">
+                            <i class="fas fa-chart-bar me-2"></i>
+                            Ver Estadísticas
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card feature-card text-center h-100">
+                    <div class="card-body">
+                        <h2 class="text-primary feature-icon" id="contador-pdfs"><?= $total_pdfs ?></h2>
+                        <h5 class="card-title">Documentos</h5>
+                        <p class="card-text text-muted">Total de documentos procesados</p>
+                        <div class="btn btn-outline-primary w-100 disabled">
+                            <i class="fas fa-file-pdf me-2"></i>
+                            Procesados
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
+<!-- Tabla de documentos -->
         <div class="card">
             <div class="card-header bg-primary text-white">
                 <h5 class="mb-0">
                     <i class="fas fa-list me-2"></i>
-                    Lista de Documentos
+                    Lista de Documentos Recientes
                 </h5>
             </div>
             <div class="card-body p-0">
@@ -123,6 +203,7 @@
                         <thead class="table-light">
                             <tr>
                                 <th>Documento</th>
+                                <th>Código</th>
                                 <th>Fecha</th>
                                 <th>Tamaño</th>
                                 <th>Estado</th>
@@ -132,12 +213,19 @@
                         <tbody id="tabla-pdfs">
                             <?php if (empty($pdfs)): ?>
                                 <tr id="fila-vacia">
-                                    <td colspan="5" class="text-center py-5">
+                                    <td colspan="6" class="text-center py-5">
                                         <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
                                         <p class="text-muted">No hay documentos procesados aún.</p>
-                                        <a href="<?= base_url('pdf/subir') ?>" class="btn btn-primary">
-                                            Subir Primer PDF
-                                        </a>
+                                        <div class="d-flex justify-content-center gap-2">
+                                            <a href="<?= base_url('pdf/subir') ?>" class="btn btn-primary">
+                                                <i class="fas fa-upload me-2"></i>
+                                                Subir Primer PDF
+                                            </a>
+                                            <a href="<?= base_url('pdf/buscar') ?>" class="btn btn-success">
+                                                <i class="fas fa-search me-2"></i>
+                                                Buscar Documento
+                                            </a>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php else: ?>
@@ -147,9 +235,18 @@
                                             <i class="fas fa-file-pdf text-danger me-2"></i>
                                             <?= htmlspecialchars($pdf['nombre_archivo'], ENT_QUOTES, 'UTF-8') ?>
                                         </td>
+                                        <td>
+                                            <?php if (!empty($pdf['numero_completo'])): ?>
+                                                <span class="badge bg-info font-monospace">
+                                                    <?= htmlspecialchars($pdf['numero_completo'], ENT_QUOTES, 'UTF-8') ?>
+                                                </span>
+                                            <?php else: ?>
+                                                <span class="text-muted">-</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td><?= date('d/m/Y H:i', strtotime($pdf['fecha_subida'])) ?></td>
                                         <td>
-                                            <span class="badge bg-info">
+                                            <span class="badge bg-secondary">
                                                 <?= number_format($pdf['tamaño_archivo'] / 1024, 2) ?> KB
                                             </span>
                                         </td>
@@ -181,6 +278,59 @@
                             <?php endif; ?>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de estadísticas -->
+        <div class="modal fade" id="modalEstadisticas" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-chart-bar me-2"></i>
+                            Estadísticas del Sistema
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h3 class="text-primary" id="total-documentos"><?= $total_pdfs ?></h3>
+                                        <p class="text-muted">Total Documentos</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h3 class="text-success" id="documentos-procesados">-</h3>
+                                        <p class="text-muted">Procesados Hoy</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h3 class="text-info" id="busquedas-realizadas">-</h3>
+                                        <p class="text-muted">Búsquedas Realizadas</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h3 class="text-warning" id="documentos-encontrados">-</h3>
+                                        <p class="text-muted">Documentos Encontrados</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -217,9 +367,11 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
+
+<script>
         let pdfIdAEliminar = null;
         const modal = new bootstrap.Modal(document.getElementById('modalConfirmacion'));
+        const modalEstadisticas = new bootstrap.Modal(document.getElementById('modalEstadisticas'));
 
         function confirmarEliminacion(id, nombreArchivo) {
             pdfIdAEliminar = id;
@@ -227,6 +379,17 @@
             modal.show();
         }
 
+        function mostrarEstadisticas() {
+            // Aquí puedes hacer una llamada AJAX para obtener estadísticas reales
+            // Por ahora mostramos datos de ejemplo
+            document.getElementById('documentos-procesados').textContent = Math.floor(Math.random() * 10);
+            document.getElementById('busquedas-realizadas').textContent = Math.floor(Math.random() * 50);
+            document.getElementById('documentos-encontrados').textContent = Math.floor(Math.random() * 30);
+            
+            modalEstadisticas.show();
+        }
+
+        // Resto del código JavaScript (funciones de eliminación, etc.)
         document.getElementById('btnEliminar').addEventListener('click', function() {
             if (pdfIdAEliminar) {
                 eliminarPdf(pdfIdAEliminar);
@@ -237,11 +400,9 @@
             const btn = document.getElementById('btnEliminar');
             const textoOriginal = btn.innerHTML;
             
-            // Mostrar loading
             btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Eliminando...';
             btn.disabled = true;
 
-            // Hacer petición AJAX
             fetch('<?= base_url() ?>index.php/pdf/eliminar/' + id, {
                 method: 'POST',
                 headers: {
@@ -252,7 +413,6 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Animar eliminación
                     const fila = document.getElementById('pdf-row-' + id);
                     fila.classList.add('row-fade-out');
                     
@@ -271,7 +431,6 @@
                 mostrarAlerta('danger', 'Error de conexión. Inténtelo nuevamente.');
             })
             .finally(() => {
-                // Restaurar botón y cerrar modal
                 btn.innerHTML = textoOriginal;
                 btn.disabled = false;
                 modal.hide();
@@ -292,12 +451,19 @@
             if (filas.length === 0) {
                 tbody.innerHTML = `
                     <tr id="fila-vacia">
-                        <td colspan="5" class="text-center py-5">
+                        <td colspan="6" class="text-center py-5">
                             <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
                             <p class="text-muted">No hay documentos procesados aún.</p>
-                            <a href="<?= base_url('pdf/subir') ?>" class="btn btn-primary">
-                                Subir Primer PDF
-                            </a>
+                            <div class="d-flex justify-content-center gap-2">
+                                <a href="<?= base_url('pdf/subir') ?>" class="btn btn-primary">
+                                    <i class="fas fa-upload me-2"></i>
+                                    Subir Primer PDF
+                                </a>
+                                <a href="<?= base_url('pdf/buscar') ?>" class="btn btn-success">
+                                    <i class="fas fa-search me-2"></i>
+                                    Buscar Documento
+                                </a>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -305,13 +471,11 @@
         }
 
         function mostrarAlerta(tipo, mensaje) {
-            // Remover alertas existentes
             const alertaExistente = document.querySelector('.alert:not(.alert-dismissible)');
             if (alertaExistente) {
                 alertaExistente.remove();
             }
 
-            // Crear nueva alerta
             const alerta = document.createElement('div');
             alerta.className = `alert alert-${tipo} alert-dismissible fade show`;
             alerta.innerHTML = `
@@ -320,17 +484,32 @@
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             `;
 
-            // Insertar después del título
             const titulo = document.querySelector('.text-center.mb-4');
             titulo.insertAdjacentElement('afterend', alerta);
 
-            // Auto-ocultar
             setTimeout(() => {
                 if (alerta.parentNode) {
                     alerta.remove();
                 }
             }, 5000);
         }
+
+        // Animaciones de carga para las tarjetas
+        document.addEventListener('DOMContentLoaded', function() {
+            const cards = document.querySelectorAll('.feature-card');
+            cards.forEach((card, index) => {
+                setTimeout(() => {
+                    card.style.opacity = '0';
+                    card.style.transform = 'translateY(20px)';
+                    card.style.transition = 'all 0.5s ease';
+                    
+                    setTimeout(() => {
+                        card.style.opacity = '1';
+                        card.style.transform = 'translateY(0)';
+                    }, 100);
+                }, index * 100);
+            });
+        });
     </script>
 </body>
 </html>
